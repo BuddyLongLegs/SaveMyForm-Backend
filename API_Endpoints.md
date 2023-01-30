@@ -287,6 +287,7 @@ The following properties of every endpoint will be descibed in this file:
   "form_count": 2,
   "forms":[
     {
+      "id": "Form ID",
       "name": "Form Name",
       "submission_count": 5,
       "last_updated": "date-of-last-submission",
