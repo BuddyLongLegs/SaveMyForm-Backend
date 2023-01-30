@@ -11,7 +11,7 @@ import Form from '../models/form.model.js';
 import Project from '../models/project.model.js';
 
 export async function updateForm(req, res) {
-  const id = req.params.id;
+  const formId = req.params.formId;
   const request = req.body;
   if (
     !(
@@ -30,7 +30,11 @@ export async function updateForm(req, res) {
   if (!verifycaptcha(recaptcha_token))
     return response_400(res, 'Captcha not verified');
   password = await hash_password(password);
-  let form = await Form.findById(id);
+  let form = await Form.findOne({ formId });
+
+  if (!form?._id) {
+    return response_400(res, 'No form found with this id');
+  }
 
   form = form
     .populate({
@@ -45,12 +49,19 @@ export async function updateForm(req, res) {
   if (password !== form.project.owner.passwordHash)
     response_400(res, 'User is not the owner');
 
-  form = await form.updateOne({
-    name: name,
-    hasRecaptchaVerification: hasRecaptcha,
-    hasFileField: hasFileField,
-    schema: schema,
-  });
+  // form = await form.updateOne({
+  //   name: name,
+  //   hasRecaptchaVerification: hasRecaptcha,
+  //   hasFileField: hasFileField,
+  //   schema: schema,
+  // });
+
+  (form.name = name),
+    (form.hasRecaptchaVerification = hasRecaptcha),
+    (form.hasFileField = hasFileField),
+    (form.schema = schema);
+
+  form = await form.save();
 
   form = await form.project({
     formId: 1,
@@ -118,9 +129,8 @@ export async function createForm(req, res) {
 //and as a result we cannot sort or check it for now.
 //So I have written the function but can't verify if it works or not for now.
 export async function dashboard(req, res) {
-  const id = req.params.id;
-  let form = await Form.findById(id);
-  form = Form.findOne({ formId: id })
+  const formId = req.params.id;
+  let form = Form.findOne({ formId })
     .populate({
       path: 'project',
       select: 'owner collaborators',
@@ -129,6 +139,9 @@ export async function dashboard(req, res) {
       path: 'project.owner',
       select: '_id name email',
     });
+  if (!form?._id) {
+    return response_400(res, 'No form found with this id');
+  }
 
   if (
     req.user._id !== form.project.owner._id &&
@@ -184,4 +197,28 @@ export async function dashboard(req, res) {
     total_pages: total_pages,
     has_prev_pages: page > 0,
   };
+}
+
+export async function deleteForm(req, res) {
+  if (!verifycaptcha(req.body.recaptcha_token))
+    return response_400(res, 'Captcha not verified');
+
+  const id = req.params.formId;
+  const form = await Form.findOne({ formId: id });
+  if (!form?._id) {
+    return response_400(res, 'No form found with this id');
+  }
+
+  const password = await hash_password(req.body.password);
+  if (password !== req.user.passwordHash)
+    return response_400(res, 'Wrong Password');
+
+  const project = await Project.findById(form.project);
+  if (String(project.owner) !== String(req.user.id))
+    return response_400(res, 'The user is not the owner of project.');
+
+  project.forms = project.forms.filter((p) => String(p) !== String(form._id));
+  await project.save();
+  await Form.deleteOne({ formId: id });
+  response_200(res, 'The project has been succesfully deleted.');
 }
